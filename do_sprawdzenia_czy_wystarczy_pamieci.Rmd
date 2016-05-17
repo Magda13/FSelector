@@ -1,0 +1,119 @@
+---
+title: "do szybkiego sprawdzenia"
+author: "Magda"
+date: "17 maja 2016"
+output: 
+  html_document:
+  toc: true
+
+---
+#Przygotawanie danych
+  
+  £adowanie potrzebnych bibliotek
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+#source("https://bioconductor.org/biocLite.R")
+#biocLite()
+
+library(devtools)
+#devtools::install_github('RTCGA/RTCGA')
+library(RTCGA)
+#installTCGA('RTCGA.rnaseq')
+library(RTCGA.rnaseq)
+library(dplyr)
+
+#install.packages('FSelector')
+#install.packages('VennDiagram')
+#install.packages('overlap')
+library(FSelector)
+library(VennDiagram)
+library(overlap) #do wyznaczania czêsci wspólnej 
+
+```
+Aanliza BRCA na podstawie tkanki chorej/zdrowej. 
+Czternasty znak bcr_patient_barcode równy 0 == guz , 1== zdrowy
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+BRCA.rnaseq<- BRCA.rnaseq
+BRCA.rnaseq %>%
+  mutate(bcr_patient_barcode = substr(bcr_patient_barcode, 14, 14)) -> BRCA.rnaseq.tumor
+# substr("abcdef", 2, 4)
+# [1] "bcd"
+```
+BRCA.rnaseq.tumor to  data.frame:	1212 obs. of  20532 variables
+z powodu braku pamiêci dzielê dane na dwie grupy:
+  -od 1:10000 kolumn
+-pozsta³e
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+#BRCA.rnaseq.tumor.first<-BRCA.rnaseq.tumor[, 1:10000]
+#View(BRCA.rnaseq.tumor)
+```
+#FSelector - Algorytmy filtruj¹ce atrybuty
+##information.gain
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+(sum(BRCA.rnaseq.tumor$bcr_patient_barcode==0))  #1100 guz 
+(sum(BRCA.rnaseq.tumor$bcr_patient_barcode==1))  #112 zdrowy
+
+information.gain(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor)->wynik.info
+
+wynik.info %>%
+  mutate(nazwy = row.names(wynik.info)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.info
+
+#head(wyniki.po.info)
+#do sortowania wierszy w ramce danych wzglêdem okreœlonej kolumny 
+#wygodnie jest u¿yæ funkcji arrange()
+#Aby posortowaæ w kolejnoœci malej¹cej mo¿na zmienn¹, po której
+#ma nast¹piæ sortowanie opatrzeæ funkcj¹ desc()
+
+subset<- cutoff.biggest.diff(wynik.info)
+(subset)  ##geny o najbardziej wyró¿niaj¹cym siê wskaŸniku attr_imprortance
+##"ADAMTS5|11096"  "ARHGAP20|57569"
+
+##10000# "FIGF|2277"      "CD300LG|146894"
+subset11<-cutoff.k(wynik.info,100) #100 o najwy¿szym wskaŸniku
+```
+
+##gain.ratio
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+gain.ratio(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor)->wynik.info2
+
+wynik.info2 %>%
+  mutate(nazwy = row.names(wynik.info2)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.info2
+
+#(head(wyniki.po.info2))
+
+subset2<-cutoff.biggest.diff(wynik.info2)
+(subset2) ##geny o najbardziej wyró¿niaj¹cym siê wskaŸniku attr_imprortance
+
+##[1] "ADAMTS5|11096"  "ARHGAP20|57569" "ABCA10|10349" 
+subset22<-cutoff.k(wynik.info2,100) ##100 genów o najwy¿szym wskaŸniku
+```
+
+##symmetrical.uncertainty
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+symmetrical.uncertainty(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor)->wynik.info3
+
+wynik.info3 %>%
+  mutate(nazwy = row.names(wynik.info3)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.info3
+
+#(head(wyniki.po.info3))
+subset3<-cutoff.biggest.diff(wynik.info3)
+(subset3) ##geny o najbardziej wyró¿niaj¹cym siê wskaŸniku attr_imprortance
+##[1] "ADAMTS5|11096"  "ARHGAP20|57569" "ABCA10|10349" 
+subset33 <- cutoff.k(wynik.info3,100) ##100 genów o najwy¿szym wskaŸniku
+```
+#Venn Diagram
+
+subset11, subset22 oraz subset33 zawieraja po 100 genów o najwy¿szych wskaznikach.
+za pomoc¹ diagramu Venna sprawdzam, które geny siê pokrywaja(s¹ w trzech zbiorach), które w dwóch, a które tylko w jednym.
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+venn.diagram(x = list(info = subset11, ratio= subset22,symm = subset33), filename ="geny1000_5_subset100.tiff", col = "transparent", fill = c("red","green","yellow"),alpha = 0.50, label.col = c("darkred", "white", "darkblue", "white", "white", "white", "darkgreen"), cex = 1.5, fontfamily = "serif", fontface = "bold",cat.col = c("darkblue", "darkgreen", "orange"), cat.cex = 1.5, cat.pos = 0, cat.dist = 0.07, cat.fontfamily = "serif", rotation.degree = 270, margin = 0.2)
+```
