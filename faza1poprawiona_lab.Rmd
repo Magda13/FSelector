@@ -1,0 +1,457 @@
+---
+title: "faza1 poprawiona"
+author: "Magda"
+date: "20 kwietnia 2016"
+output: 
+  html_document:
+    toc: true
+  
+---
+#Przygotawanie danych
+
+£adowanie potrzebnych bibliotek
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+library(devtools)
+#devtools::install_github('RTCGA/RTCGA')
+library(RTCGA)
+#installTCGA('RTCGA.rnaseq')
+library(RTCGA.rnaseq)
+library(dplyr)
+
+#install.packages('FSelector')
+#install.packages('VennDiagram')
+#install.packages('overlap')
+library(FSelector)
+library(VennDiagram)
+library(overlap) #do wyznaczania czêsci wspólnej 
+
+```
+Aanliza BRCA na podstawie tkanki chorej/zdrowej. 
+Czternasty znak bcr_patient_barcode równy 0 == guz , 1== zdrowy
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+BRCA.rnaseq<- BRCA.rnaseq
+BRCA.rnaseq %>%
+  mutate(bcr_patient_barcode = substr(bcr_patient_barcode, 14, 14)) -> BRCA.rnaseq.tumor
+# substr("abcdef", 2, 4)
+# [1] "bcd"
+```
+BRCA.rnaseq.tumor to  data.frame:	1212 obs. of  20532 variables
+z powodu braku pamiêci dzielê dane na dwie grupy:
+-od 1:10000 kolumn
+-pozsta³e
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+BRCA.rnaseq.tumor.first<-BRCA.rnaseq.tumor[, 1:10000]
+#View(BRCA.rnaseq.tumor)
+```
+#FSelector - Algorytmy filtruj¹ce atrybuty
+##information.gain
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+(sum(BRCA.rnaseq.tumor.first$bcr_patient_barcode==0))  #1100 guz 
+(sum(BRCA.rnaseq.tumor.first$bcr_patient_barcode==1))  #112 zdrowy
+
+information.gain(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor.first)->wynik.info
+
+wynik.info %>%
+  mutate(nazwy = row.names(wynik.info)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.info
+
+#head(wyniki.po.info)
+#do sortowania wierszy w ramce danych wzglêdem okreœlonej kolumny 
+#wygodnie jest u¿yæ funkcji arrange()
+#Aby posortowaæ w kolejnoœci malej¹cej mo¿na zmienn¹, po której
+#ma nast¹piæ sortowanie opatrzeæ funkcj¹ desc()
+
+subset<- cutoff.biggest.diff(wynik.info)
+(subset)  ##geny o najbardziej wyró¿niaj¹cym siê wskaŸniku attr_imprortance
+##"ADAMTS5|11096"  "ARHGAP20|57569"
+
+##10000# "FIGF|2277"      "CD300LG|146894"
+subset11<-cutoff.k(wynik.info,100) #100 o najwy¿szym wskaŸniku
+```
+
+##gain.ratio
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+gain.ratio(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor.first)->wynik.info2
+
+wynik.info2 %>%
+  mutate(nazwy = row.names(wynik.info2)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.info2
+
+#(head(wyniki.po.info2))
+
+subset2<-cutoff.biggest.diff(wynik.info2)
+(subset2) ##geny o najbardziej wyró¿niaj¹cym siê wskaŸniku attr_imprortance
+
+##[1] "ADAMTS5|11096"  "ARHGAP20|57569" "ABCA10|10349" 
+subset22<-cutoff.k(wynik.info2,100) ##100 genów o najwy¿szym wskaŸniku
+```
+
+##symmetrical.uncertainty
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+symmetrical.uncertainty(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor.first)->wynik.info3
+
+wynik.info3 %>%
+  mutate(nazwy = row.names(wynik.info3)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.info3
+
+#(head(wyniki.po.info3))
+subset3<-cutoff.biggest.diff(wynik.info3)
+(subset3) ##geny o najbardziej wyró¿niaj¹cym siê wskaŸniku attr_imprortance
+##[1] "ADAMTS5|11096"  "ARHGAP20|57569" "ABCA10|10349" 
+subset33 <- cutoff.k(wynik.info3,100) ##100 genów o najwy¿szym wskaŸniku
+```
+#Venn Diagram
+
+subset11, subset22 oraz subset33 zawieraja po 100 genów o najwy¿szych wskaznikach.
+za pomoc¹ diagramu Venna sprawdzam, które geny siê pokrywaja(s¹ w trzech zbiorach), które w dwóch, a które tylko w jednym.
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+venn.diagram(x = list(info = subset11, ratio= subset22,symm = subset33), filename ="geny1000_5_subset100.tiff", col = "transparent", fill = c("red","green","yellow"),alpha = 0.50, label.col = c("darkred", "white", "darkblue", "white", "white", "white", "darkgreen"), cex = 1.5, fontfamily = "serif", fontface = "bold",cat.col = c("darkblue", "darkgreen", "orange"), cat.cex = 1.5, cat.pos = 0, cat.dist = 0.07, cat.fontfamily = "serif", rotation.degree = 270, margin = 0.2)
+```
+![](geny1000_5_subset100.tiff)
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+############## Geny WSpólne ########
+ratio_and_info<- calculate.overlap(x=list(subset11, subset22))
+(ratio_and_info$a3) #42
+##74wspólne
+
+####################
+ratio_and_info_and_symm <-calculate.overlap(x=list(subset11, subset22, subset33))
+(ratio_and_info_and_symm$a5)  #42
+##74wspólne
+View(as.data.frame(ratio_and_info_and_symm$a5))
+```
+wspólne dla 1:10 000
+geny 
+ [1] "FIGF|2277"        "CD300LG|146894"   "ADAMTS5|11096"    "ARHGAP20|57569"  
+ [5] "COL10A1|1300"     "CA4|762"          "CAV1|857"         "LMOD1|25802"     
+ [9] "FAM13A|10144"     "ITIH5|80760"      "BTNL9|153579"     "FXYD1|5348"      
+[13] "ITM2A|9452"       "FMO2|2327"        "ABCA10|10349"     "DMD|1756"        
+[17] "CAV2|858"         "KLHL29|114818"    "LOC286367|286367" "ABCA9|10350"     
+[21] "CPA1|1357"        "CHL1|10752"       "ALDH1A2|8854"     "CACHD1|57685"    
+[25] "DST|667"          "HOXA7|3204"       "JAM2|58494"       "KIAA0101|9768"   
+[29] "AURKA|6790"       "HLF|3131"         "GPRASP1|9737"     "IL33|90865"      
+[33] "HSD17B6|8630"     "HOXA5|3202"       "CORO2B|10391"     "CDCA8|55143"     
+[37] "H2AFY|9555"       "C2orf40|84417"    "FGF1|2246"        "C16orf59|80178"  
+[41] "CDC25C|995"       "CAPN11|11131"  
+
+```{r message = FALSE, cache=FALSE,warning=FALSE}
+
+ratio_and_symm<-calculate.overlap(x=list(subset22, subset33))
+(ratio_and_symm$a3) #77
+##89 wspólnych
+
+info_and_symm<-calculate.overlap(x=list(subset11, subset33))
+(info_and_symm$a3) # 60
+##85 wspolnych
+
+```
+zmiana equal.frequency.binning.discretization z **5** przedzia³ów równej czêstoœci do **2** przedzia³ów
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+FSelector::information.gain
+function (formula, data, type = c("infogain", "gainratio", "symuncert")) 
+  {
+    type = match.arg(type)
+    new_data = get.data.frame.from.formula(formula, data)
+    # przygotowanie danych
+    new_data = discretize.all(formula, new_data)
+    # dyskretyzuje ciagle
+    attr_entropies = sapply(new_data, entropyHelper)
+    class_entropy = attr_entropies[1]  # wyliczana entorpia klasy
+    attr_entropies = attr_entropies[-1]  # wyliaczana entorpia atyrbutu
+    joint_entropies = sapply(new_data[-1], function(t) {
+      entropyHelper(data.frame(cbind(new_data[[1]], t)))
+    }) # entropia ³¹czna 
+    results = class_entropy + attr_entropies - joint_entropies  #ostateczna statystyka
+    if (type == "gainratio") {
+      results = results/attr_entropies
+    }
+    else if (type == "symuncert") {
+      results = 2 * results/(attr_entropies + class_entropy)
+    }
+    attr_names = dimnames(new_data)[[2]][-1]
+    return(data.frame(attr_importance = results, row.names = attr_names))
+}
+
+
+discretize.all2<-  function (formula, data) 
+{
+  new_data = get.data.frame.from.formula(formula, data)
+  dest_column_name = dimnames(new_data)[[2]][1]
+  if (!is.factor(new_data[[1]])) {
+    new_data[[1]] = equal.frequency.binning.discretization(new_data[[1]], 
+                                                           2)
+  }
+  new_data = supervised.discretization(formula, data = new_data)
+  new_data = get.data.frame.from.formula(formula, new_data)
+  return(new_data)
+}
+
+discretize.all2 -> discretize.all
+discretize.all
+
+information.gain(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor.first)->wynik.info_k2
+
+
+wynik.info_k2 %>%
+  mutate(nazwy = row.names(wynik.info_k2)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.info_k2
+
+subset_k2<- cutoff.biggest.diff(wynik.info_k2)
+(subset_k2)
+##"ADAMTS5|11096"  "ARHGAP20|57569"
+subset11_k2<-cutoff.k(wynik.info_k2,100)
+```
+
+##gain.ratio
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+gain.ratio(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor.first)->wynik.info2_k2
+
+wynik.info2_k2 %>%
+  mutate(nazwy = row.names(wynik.info2_k2)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.info2_k2
+
+#(head(wyniki.po.info2_k2))
+
+subset2_k2<-cutoff.biggest.diff(wynik.info2_k2)
+(subset2_k2)
+
+##[1] "ADAMTS5|11096"  "ARHGAP20|57569" "ABCA10|10349" 
+subset22_k2<-cutoff.k(wynik.info2_k2,100)
+```
+
+##symmetrical.uncertainty
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+symmetrical.uncertainty(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor.first)->wynik.info3_k2
+
+wynik.info3_k2 %>%
+  mutate(nazwy = row.names(wynik.info3_k2)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.info3_k2
+
+#(head(wyniki.po.info3_k2))
+subset3_k2<-cutoff.biggest.diff(wynik.info3_k2)
+(subset3_k2)
+##[1] "ADAMTS5|11096"  "ARHGAP20|57569" "ABCA10|10349" 
+subset33_k2 <- cutoff.k(wynik.info3_k2,100)
+
+```
+
+#Venn diagram dla k=2
+
+```{r message = FALSE, cache=FALSE, warning=FALSE}
+venn.diagram(x = list(info = subset11_k2, ratio= subset22_k2,symm = subset33_k2), filename ="geny_subset100__k2.tiff", col = "transparent", fill = c("red","green","yellow"),alpha = 0.50, label.col = c("darkred", "white", "darkblue", "white", "white", "white", "darkgreen"), cex = 1.5, fontfamily = "serif", fontface = "bold",cat.col = c("darkblue", "darkgreen", "orange"), cat.cex = 1.5, cat.pos = 0, cat.dist = 0.07, cat.fontfamily = "serif", rotation.degree = 270, margin = 0.2)
+
+#venn.diagram(x = list(info = subset1_k1_k2, ratio= subset22_k2), filename ="dwa_subset100.tiff")
+
+
+##############Czêœci WSpólne ########
+ratio_and_info_k2<- calculate.overlap(x=list(subset11_k2, subset22_k2))
+str(ratio_and_info$a3) #42
+##74wspólne
+
+####################
+ratio_and_info_and_symm_k2 <-calculate.overlap(x=list(subset11_k2, subset22_k2, subset33_k2))
+str(ratio_and_info_and_symm_k2$a5)  
+##74wspólne
+View(as.data.frame(ratio_and_info_and_symm_k2$a5))
+
+ratio_and_symm_k2<-calculate.overlap(x=list(subset22_k2, subset33_k2))
+str(ratio_and_symm_k2$a3) 
+##89 wspólnych
+
+info_and_symm_k2<-calculate.overlap(x=list(subset11_k2, subset33_k2))
+str(info_and_symm_k2$a3)
+##85 wspolnych
+
+#venn.diagram(x = list(symm = subset33_k2, ratio= subset22_k2), filename ="ratio_sym_100.tiff")
+
+```
+
+
+#Druga czesc danych 10001:20532 + pierwszy wiersz(bcrr_patient_barcode)
+
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+BRCA.rnaseq<- BRCA.rnaseq
+BRCA.rnaseq %>%
+  mutate(bcr_patient_barcode = substr(bcr_patient_barcode, 14, 14)) -> BRCA.rnaseq.tumor
+```
+Przycinam dane do pozosta³ych  kolumn
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+BRCA.rnaseq.tumor.second<-BRCA.rnaseq.tumor[, -c(2:10000)]
+#View(BRCA.rnaseq.tumor)
+```
+
+#FSelector
+##information.gain
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+FSelector::information.gain
+
+discretize.all<-  function (formula, data) 
+{
+  new_data = get.data.frame.from.formula(formula, data)
+  dest_column_name = dimnames(new_data)[[2]][1]
+  if (!is.factor(new_data[[1]])) {
+    new_data[[1]] = equal.frequency.binning.discretization(new_data[[1]], 
+                                                           5)
+  }
+  new_data = supervised.discretization(formula, data = new_data)
+  new_data = get.data.frame.from.formula(formula, new_data)
+  return(new_data)
+}
+
+sum(BRCA.rnaseq.tumor$bcr_patient_barcode==0)
+sum(BRCA.rnaseq.tumor$bcr_patient_barcode==1)
+
+information.gain(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor.second)->wynik.infop
+
+wynik.infop %>%
+  mutate(nazwy = row.names(wynik.infop)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.infop
+
+head(wyniki.po.infop)
+###
+#  attr_importance          nazwy
+#1       0.2531255    SPRY2|10253
+#2       0.2529264     MMP11|4320
+#3       0.2518397      SDPR|8436
+#4       0.2403967  MAMDC2|256691
+#5       0.2402551 TMEM220|388335
+#6       0.2394089    PAMR1|25891
+
+
+subsetp<- cutoff.biggest.diff(wynik.infop)
+(subsetp)
+## "SPRY2|10253" "MMP11|4320"  "SDPR|8436"
+subset11p<-cutoff.k(wynik.infop,100)
+```
+##gain.ratio
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+gain.ratio(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor.second)->wynik.info2p
+
+wynik.info2p %>%
+  mutate(nazwy = row.names(wynik.info2p)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.info2p
+
+#(head(wyniki.po.info2p))
+#  attr_importance          nazwy
+#1       0.6426123       MME|4311
+#2       0.5948608    SPRY2|10253
+#3       0.5779482     MATN2|4147
+#4       0.5522885 TMEM220|388335
+#5       0.5365478  MAMDC2|256691
+#6       0.4969705     TSLP|85480
+
+subset2p<-cutoff.biggest.diff(wynik.info2p)
+(subset2p) 
+
+# "MME|4311"
+subset22p<-cutoff.k(wynik.info2p,100)
+```
+
+##symmetrical.uncertainty
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+symmetrical.uncertainty(formula =bcr_patient_barcode~., data = BRCA.rnaseq.tumor.see)->wynik.info3p
+
+wynik.info3p %>%
+  mutate(nazwy = row.names(wynik.info3p)) %>%
+  arrange(desc(attr_importance)) -> wyniki.po.info3p
+
+#(head(wyniki.po.info3p))
+#  attr_importance          nazwy
+#1       0.6906747       MME|4311
+#2       0.6900938    SPRY2|10253
+#3       0.6466344 TMEM220|388335
+#4       0.6389344     MATN2|4147
+#5       0.6358690  MAMDC2|256691
+#6       0.6011633     TSLP|85480
+
+subset3p<-cutoff.biggest.diff(wynik.info3p)
+(subset3p)
+## "MME|4311"    "SPRY2|10253"
+subset33p <- cutoff.k(wynik.info3p,100)
+```
+##Venn Diagram
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+venn.diagram(x = list(info = subset11p, ratio= subset22p,symm = subset33p), filename ="geny_po10000_5_subset100.tiff", col = "transparent", fill = c("red","green","yellow"),alpha = 0.50, label.col = c("darkred", "white", "darkblue", "white", "white", "white", "darkgreen"), cex = 1.5, fontfamily = "serif", fontface = "bold",cat.col = c("darkblue", "darkgreen", "orange"), cat.cex = 1.5, cat.pos = 0, cat.dist = 0.07, cat.fontfamily = "serif", rotation.degree = 270, margin = 0.2)
+```
+
+![](geny_po10000_5_subset100.tiff)
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+ratio_and_info_and_symm_p <-calculate.overlap(x=list(subset11p, subset22p, subset33p))
+
+(ratio_and_info_and_symm_p$a5)  #53
+##74wspólne
+#View(as.data.frame(ratio_and_info_and_symm_p$a5))
+```
+ [1] "SPRY2|10253"      "MMP11|4320"       "SDPR|8436"       
+ [4] "MAMDC2|256691"    "TMEM220|388335"   "PAMR1|25891"     
+ [7] "TSLP|85480"       "PPP1R12B|4660"    "SCN4B|6330"      
+[10] "MME|4311"         "NEK2|4751"        "SCARA5|286133"   
+[13] "NKAPL|222698"     "RAG1AP1|55974"    "MATN2|4147"      
+[16] "MYOM1|8736"       "MESTIT1|317751"   "PPAP2B|8613"     
+[19] "NTRK2|4915"       "TNS1|7145"        "LRRC2|79442"     
+[22] "LYVE1|10894"      "PALMD|54873"      "PKMYT1|9088"     
+[25] "UBE2T|29089"      "PAFAH1B3|5050"    "TPM3|7170"       
+[28] "WDR62|284403"     "TTC28|23331"      "SH3BGRL2|83699"  
+[31] "NR3C2|4306"       "LRRC3B|116135"    "SPC25|57405"     
+[34] "LRRTM2|26045"     "SPTBN1|6711"      "PROS1|5627"      
+[37] "TPX2|22974"       "UBE2C|11065"      "LOC572558|572558"
+[40] "SIK2|23235"       "OXTR|5021"        "NIPSNAP3B|55335" 
+[43] "MYOC|4653"        "STAT5B|6777"      "RUSC1|23623"     
+[46] "METTL7A|25840"    "UHRF1|29128"      "MYH11|4629"      
+[49] "RBMS2|5939"       "SYNM|23336"       "SLC2A4|6517"     
+[52] "SCN4A|6329"       "MAB21L1|4081" 
+
+#t.test
+Analizoway zbiór danych równie¿ dzielê na dwie grupy jak powy¿ej
+
+!!!!!!!!!!
+Ale ale tu chyba gafa. t.test mozna dla zmiennych o rozkladzie normalnym a te takie nie s¹- musze to poprawiæ
+
+
+```{r message = FALSE, cache=FALSE, , warning=FALSE}
+
+grupa1 <- BRCA.rnaseq.tumor.first$bcr_patient_barcode == 0   #guz
+grupa2 <- BRCA.rnaseq.tumor.first$bcr_patient_barcode == 1  #zdrowy
+
+test.first<-t.test(x = BRCA.rnaseq.tumor.first[grupa1, 500],
+       y = BRCA.rnaseq.tumor.first[grupa2, 500])
+
+grupa1 <- BRCA.rnaseq.tumor.first$bcr_patient_barcode == 0   #guz
+grupa2 <- BRCA.rnaseq.tumor.first$bcr_patient_barcode == 1  #zdrowy
+pwartosci <- numeric()
+
+for( i in 2:ncol(BRCA.rnaseq.tumor.first)) { 
+  t.test(x = BRCA.rnaseq.tumor.first[grupa1, i],
+        y = BRCA.rnaseq.tumor.first[grupa2, i])$p.value -> pwartosci[i]
+}
+data.frame(pwartosci = pwartosci,
+geny=names(BRCA.rnaseq.tumor.first)[1:ncol(BRCA.rnaseq.tumor.first)]) -> ramka_wynikow_first
+
+#geny z p-wartoœci¹ mniejsza niz 0.05 wybieram za istotny
+
+  
+ramka_wynikow_first_0.05<- filter(ramka_wynikow_first, pwartosci<=0.05) %>% arrange(desc(pwartosci)) 
+  
+
+ramka_wynikow_0.05_tail<-tail(ramka_wynikow_first_0.05,100) 
+ 
+ subset_t.test<-list(ramka_wynikow_first_0.05_tail$geny)
+ ratio_and_t.test <-calculate.overlap(x=list(subset11, subset_t.test))
+(ratio_and_t.test$a5)
+
